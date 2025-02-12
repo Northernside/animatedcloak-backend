@@ -95,4 +95,8 @@ func UploadCloak(ctx *fasthttp.RequestCtx) {
 	ctx.SetStatusCode(fasthttp.StatusOK)
 	ctx.Response.Header.Set("Content-Type", "application/json")
 	ctx.SetBodyString(`{"success": true}`)
+
+	cacheMutex.Lock()
+	delete(cache, profile.UUID)
+	cacheMutex.Unlock()
 }
