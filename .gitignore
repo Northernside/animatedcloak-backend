@@ -2,3 +2,4 @@ uploads/
 animatedcloak-backend
 animatedcloak-backend.exe
 .env
+addon/*.jar

@@ -14,9 +14,11 @@ var (
 )
 
 func init() {
-	// defaultHandler("GET", "/foo", routes.Index)
-	defaultHandler("GET", "/api/cloak", routes.GetCloak)
+	adminHandler("PUT", "/api/update", routes.UploadAddon)
+	defaultHandler("GET", "/api/update", routes.UpdateAddon)
+
 	userHandler("PUT", "/api/cloak", routes.UploadCloak)
+	defaultHandler("GET", "/api/cloak", routes.GetCloak)
 }
 
 func StartAPI() {
@@ -80,5 +82,45 @@ func userHandler(method, path string, handler fasthttp.RequestHandler) {
 
 		ctx.SetUserValue("labyuser", labyPayload)
 		handler(ctx)
+	}
+}
+
+func adminHandler(method, path string, handler fasthttp.RequestHandler) {
+	endpointList[fmt.Sprintf("%s:%s", method, path)] = func(ctx *fasthttp.RequestCtx) {
+		if string(ctx.Method()) != method {
+			ctx.Response.SetStatusCode(fasthttp.StatusMethodNotAllowed)
+			ctx.Response.Header.Set("Content-Type", "application/json")
+			ctx.Response.SetBodyString(`{"error": "Method Not Allowed"}`)
+			return
+		}
+
+		token := string(ctx.Request.Header.Cookie("token"))
+		if token == "" {
+			ctx.Response.Header.Set("Content-Type", "application/json")
+			ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+			ctx.SetBodyString(`{"error": "Unauthorized"}`)
+			return
+		}
+
+		labyPayload, err := labyauth.VerifyToken(token)
+		if err != nil {
+			ctx.Response.Header.Set("Content-Type", "application/json")
+			ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+			ctx.SetBodyString(`{"error": "Unauthorized", "message": "` + err.Error() + `"}`)
+			return
+		}
+
+		for _, uuid := range labyauth.UUIDWhitelist {
+			if uuid == labyPayload.UUID {
+				ctx.SetUserValue("labyuser", labyPayload)
+				handler(ctx)
+				return
+			}
+		}
+
+		ctx.Response.Header.Set("Content-Type", "application/json")
+		ctx.SetStatusCode(fasthttp.StatusForbidden)
+		ctx.SetBodyString(`{"error": "Forbidden"}`)
+		return
 	}
 }
