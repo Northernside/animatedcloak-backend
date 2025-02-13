@@ -94,28 +94,48 @@ func adminHandler(method, path string, handler fasthttp.RequestHandler) {
 			return
 		}
 
+		var tokenType string
 		token := string(ctx.Request.Header.Cookie("token"))
 		if token == "" {
-			ctx.Response.Header.Set("Content-Type", "application/json")
-			ctx.SetStatusCode(fasthttp.StatusUnauthorized)
-			ctx.SetBodyString(`{"error": "Unauthorized"}`)
-			return
-		}
-
-		labyPayload, err := labyauth.VerifyToken(token)
-		if err != nil {
-			ctx.Response.Header.Set("Content-Type", "application/json")
-			ctx.SetStatusCode(fasthttp.StatusUnauthorized)
-			ctx.SetBodyString(`{"error": "Unauthorized", "message": "` + err.Error() + `"}`)
-			return
-		}
-
-		for _, uuid := range labyauth.UUIDWhitelist {
-			if uuid == labyPayload.UUID {
-				ctx.SetUserValue("labyuser", labyPayload)
-				handler(ctx)
+			api_key := string(ctx.Request.Header.Peek("Authorization"))
+			if api_key != env.GetEnv("ADMIN_KEY", "") {
+				ctx.Response.Header.Set("Content-Type", "application/json")
+				ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+				ctx.SetBodyString(`{"error": "Unauthorized"}`)
 				return
 			}
+
+			tokenType = "api_key"
+		} else {
+			tokenType = "laby_jwt"
+		}
+
+		if tokenType == "laby_jwt" {
+			labyPayload, err := labyauth.VerifyToken(token)
+			if err != nil {
+				ctx.Response.Header.Set("Content-Type", "application/json")
+				ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+				ctx.SetBodyString(`{"error": "Unauthorized", "message": "` + err.Error() + `"}`)
+				return
+			}
+
+			for _, uuid := range labyauth.UUIDWhitelist {
+				if uuid == labyPayload.UUID {
+					ctx.SetUserValue("labyuser", labyPayload)
+					handler(ctx)
+					return
+				}
+			}
+		} else if tokenType == "api_key" {
+			var adminProfile labyauth.LabyPayload = labyauth.LabyPayload{
+				UUID:     "00000000-0000-0000-0000-000000000000",
+				Username: "admin",
+				Roles:    []string{"ADMIN"},
+			}
+
+			ctx.SetUserValue("labyuser", adminProfile)
+			handler(ctx)
+			return
 		}
 
 		ctx.Response.Header.Set("Content-Type", "application/json")
